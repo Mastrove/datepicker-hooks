@@ -1,0 +1,32 @@
+{
+  "name": "datepicker-react-hooks-example",
+  "version": "1.0.0",
+  "description": "",
+  "keywords": [],
+  "main": "src/index.js",
+  "dependencies": {
+    "@types/lodash": "^4.14.157",
+    "@types/react": "^16.9.43",
+    "@types/react-dom": "^16.9.8",
+    "date-fns": "^2.14.0",
+    "lodash": "^4.17.19",
+    "react": "16.13.1",
+    "react-dom": "16.13.1",
+    "react-scripts": "3.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^3.9.5"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test --env=jsdom",
+    "eject": "react-scripts eject"
+  },
+  "browserslist": [
+    ">0.2%",
+    "not dead",
+    "not ie <= 11",
+    "not op_mini all"
+  ]
+}

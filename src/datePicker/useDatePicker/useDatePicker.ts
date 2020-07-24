@@ -13,9 +13,11 @@ import {
   subYears,
   startOfMonth,
   isSameMonth,
+  addWeeks,
+  addMonths,
 } from 'date-fns';
-import { times } from 'lodash';
-import { useEffect, useMemo, useState } from 'react';
+import { throttle } from 'lodash';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   TDaysOfWeek,
   THoveredDate,
@@ -92,7 +94,7 @@ export function useDatePicker({
 }: UseDatePickerProps) {
   const [activeMonths, setActiveMonths] = useState<TPickerMonth[]>([]);
   const [hoveredDate, setHoveredDate] = useState<THoveredDate>();
-  const [focusedDate, setFocusedDate] = useState<Date | null>(startDate);
+  const [focusedDate, setFocusedDate] = useState<Date>();
   const [activeSelection, setActiveSelection] = useState<ActiveSelection>(ActiveSelection.start);
   const [dateRange, setDateRage] = useState<TDateRange>({});
   const [currentInputValues, setCurrentInputValues] = useState<TCurrentInputValues>({
@@ -124,15 +126,41 @@ export function useDatePicker({
     if (typeof window !== 'undefined') {
       if (window.addEventListener) {
         window.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('keyup', handleKeyUp);
       }
     }
 
     return () => {
       if (window.removeEventListener) {
         window.removeEventListener('keydown', handleKeyDown);
+        window.removeEventListener('keyup', handleKeyUp);
       }
     };
   });
+
+  useEffect(() => {
+    if (!focusedDate) return;
+
+    const months = activeMonths.filter((m) => !m.isPadding);
+    const leftBoundary = months[0].month.date;
+    const rightBoundary = months[months.length - 1].month.date;
+
+    if (focusedDate < leftBoundary) {
+      setActiveMonths(getNextActiveMonth(activeMonths, -1, firstDayOfWeek, padding));
+    }
+
+    if (focusedDate > rightBoundary) {
+      setActiveMonths(getNextActiveMonth(activeMonths, 1, firstDayOfWeek, padding));
+    }
+
+    if (activeSelection === ActiveSelection.start) {
+      setCurrentInputValues(getInputValuesFromRange({ start: focusedDate }));
+    }
+
+    if (activeSelection === ActiveSelection.end) {
+      setCurrentInputValues(getInputValuesFromRange({ end: focusedDate }));
+    }
+  }, [focusedDate]);
 
   useEffect(() => {
     getInputRef(activeSelection).current?.focus();
@@ -171,18 +199,46 @@ export function useDatePicker({
 
   const isDateFocused = (date: Date) => (focusedDate ? isSameDay(date, focusedDate) : false);
 
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (
-      (e.key === 'ArrowRight' ||
-        e.key === 'ArrowLeft' ||
-        e.key === 'ArrowDown' ||
-        e.key === 'ArrowUp') &&
-      !focusedDate
-    ) {
-      const activeMonth = activeMonths[0];
-      // onDateFocus(activeMonth.date);
-      // setActiveMonths(getMonths(numberOfMonths, activeMonth.date));
-    }
+  const handleKeyDown = useCallback(
+    throttle(
+      (e: KeyboardEvent) => {
+        setFocusedDate((date) => {
+          if (!date) {
+            return activeMonths.filter((m) => !m.isPadding)[0]?.month?.date;
+          }
+
+          switch (e.key) {
+            case 'ArrowRight':
+              return addDays(date, 1);
+
+            case 'ArrowLeft':
+              return addDays(date, -1);
+
+            case 'ArrowUp':
+              return addWeeks(date, -1);
+
+            case 'ArrowDown':
+              return addWeeks(date, 1);
+
+            case 'PageUp':
+              return addMonths(date, -1);
+
+            case 'PageDown':
+              return addMonths(date, 1);
+
+            default:
+              break;
+          }
+        });
+      },
+      500,
+      { leading: true },
+    ),
+    [activeMonths],
+  );
+
+  const handleKeyUp = () => {
+    handleKeyDown.cancel();
   };
 
   const reset = () => {
@@ -336,13 +392,14 @@ export function useDatePicker({
 
   const goToDate = (date: Date) => {
     setActiveMonths(getPickerMonths({ numberOfMonths, firstDayOfWeek, startDate: date }));
-    setFocusedDate(null);
+    setFocusedDate(undefined);
   };
 
   const goToYear = (year: number) => {};
 
   const getDateProps = (date: Date) => {
     const disabled = isDisabled(date);
+    const focused = !!focusedDate && isSameDay(date, focusedDate);
 
     const onDateClick = (date: Date) => {
       if (activeSelection === ActiveSelection.start) {
@@ -361,7 +418,7 @@ export function useDatePicker({
         onMouseEnter: () => onDateHover(date),
         onMouseLeave: () => setHoveredDate(undefined),
         disabled,
-        tabIndex: -1,
+        tabIndex: focusedDate === date ? 0 : -1,
       },
       disabled,
       isInSelectedRange:
@@ -374,6 +431,7 @@ export function useDatePicker({
       },
       isStartDate: dateRange.start && isSameDay(dateRange.start, date),
       isEndDate: dateRange.end && isSameDay(dateRange.end, date),
+      focused,
     };
   };
 

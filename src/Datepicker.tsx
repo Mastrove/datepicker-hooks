@@ -119,6 +119,7 @@ function DatePicker() {
                   isStartDate,
                   isEndDate,
                   potentialRange,
+                  focused,
                   props,
                 } = getDateProps(day.day);
                 return (
@@ -142,6 +143,7 @@ function DatePicker() {
                           : potentialRange.isWithinRange
                           ? 'green'
                           : 'white',
+                      border: focused ? '2px solid red' : '1px solid grey',
                     }}
                   >
                     {day.day.getDate()}

@@ -128,15 +128,14 @@ export function getNextActiveMonth(
 ): TPickerMonth[] {
   if (vector === 0) return activeMonth;
 
+  // strip padded months
+  const month = activeMonth.filter((m) => !m.isPadding);
   // get the reference month, if the vector is positive (ltr), this would be
   // the last visible month otherwise (rtl) should yield the first visible month
-  const referenceMonth = activeMonth[vector < 0 ? 0 : activeMonth.length - 1];
+  const referenceMonth = month[vector < 0 ? 0 : month.length - 1];
   // strip away padded months or months that are no longer in view
-  let pickerMonths = activeMonth.filter((month, index) => {
-    return (
-      month.isPadding ||
-      (vector > 0 ? index > vector - 1 : index < activeMonth.length - Math.abs(vector))
-    );
+  let pickerMonths = month.filter((_, index) => {
+    return vector > 0 ? index > vector - 1 : index < month.length - Math.abs(vector);
   });
 
   for (let i = 0; i < Math.abs(vector); i += 1) {

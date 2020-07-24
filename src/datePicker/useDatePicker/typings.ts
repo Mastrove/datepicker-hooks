@@ -43,3 +43,8 @@ export interface THoveredDate {
     reason: string;
   } | null;
 }
+
+export interface TPickerMonthPadding {
+  left?: number;
+  right?: number;
+}

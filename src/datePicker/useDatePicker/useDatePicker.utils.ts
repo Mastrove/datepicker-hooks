@@ -20,8 +20,9 @@ import {
   startOfToday,
   subMonths,
 } from 'date-fns';
-import { times } from 'lodash';
-import { TDay, TDaysOfWeek, TMonth, TPeriod } from './typings';
+import { times, pick } from 'lodash';
+import { TDay, TDaysOfWeek, TMonth, TPeriod, TPickerMonthPadding } from './typings';
+import { MutableRefObject, createRef } from 'react';
 
 export const isInUnavailableDates = (unavailableDates: Date[] = [], date: Date) => {
   return unavailableDates.some((_date) => isSameDay(date, _date));
@@ -56,10 +57,18 @@ export const compareDuration = (
 
 export interface TPickerMonth {
   month: TMonth;
+  isPadding: boolean;
+}
+
+interface TGetPickerMonthOptions {
   isPadding?: boolean;
 }
 
-export function getPickerMonth(date: Date, firstDayOfWeek: TDaysOfWeek): TPickerMonth {
+export function getPickerMonth(
+  date: Date,
+  firstDayOfWeek: TDaysOfWeek,
+  options: TGetPickerMonthOptions = {},
+): TPickerMonth {
   const today = startOfMonth(date);
   const year = getYear(today);
   const index = getMonth(today);
@@ -72,12 +81,8 @@ export function getPickerMonth(date: Date, firstDayOfWeek: TDaysOfWeek): TPicker
       index,
       date: today,
     },
+    isPadding: !!options.isPadding,
   };
-}
-
-export interface TPickerMonthPadding {
-  left?: number;
-  right?: number;
 }
 
 export interface TGetPickerMonthsOptions {
@@ -97,7 +102,7 @@ export function getPickerMonths({
 }: TGetPickerMonthsOptions): TPickerMonth[] {
   const start = startDate ?? startOfToday();
   const end = endDate ?? addMonths(start, numberOfMonths - 1);
-  const months: TPickerMonth[] = [];
+  let months: TPickerMonth[] = [];
 
   for (let i = 0; i < numberOfMonths; i += 1) {
     // last month in month array
@@ -108,6 +113,10 @@ export function getPickerMonths({
     }
   }
 
+  if (padding) {
+    months = padPickerMonths(months, padding, firstDayOfWeek);
+  }
+
   return months;
 }
 
@@ -115,16 +124,19 @@ export function getNextActiveMonth(
   activeMonth: TPickerMonth[],
   vector: number,
   firstDayOfWeek: TDaysOfWeek,
-  padding?: { left: number; right: number },
+  padding?: TPickerMonthPadding,
 ): TPickerMonth[] {
   if (vector === 0) return activeMonth;
 
   // get the reference month, if the vector is positive (ltr), this would be
   // the last visible month otherwise (rtl) should yield the first visible month
   const referenceMonth = activeMonth[vector < 0 ? 0 : activeMonth.length - 1];
-  // strip away months that are no longer in view
-  const pickerMonths = activeMonth.filter((i, index) => {
-    return vector > 0 ? index > vector - 1 : index < activeMonth.length - Math.abs(vector);
+  // strip away padded months or months that are no longer in view
+  let pickerMonths = activeMonth.filter((month, index) => {
+    return (
+      month.isPadding ||
+      (vector > 0 ? index > vector - 1 : index < activeMonth.length - Math.abs(vector))
+    );
   });
 
   for (let i = 0; i < Math.abs(vector); i += 1) {
@@ -139,6 +151,10 @@ export function getNextActiveMonth(
         getPickerMonth(subMonths(referenceMonth.month.date, i + 1), firstDayOfWeek),
       );
     }
+  }
+
+  if (padding) {
+    pickerMonths = padPickerMonths(pickerMonths, padding, firstDayOfWeek);
   }
 
   return pickerMonths;
@@ -337,4 +353,47 @@ export const getMonths = (year: number, firstDayOfWeek: TDaysOfWeek) => {
   });
 
   return months;
+};
+
+export const refManager = <T extends any, K extends string = string>() => {
+  const refs: { [key: string]: MutableRefObject<T | null> } = {};
+
+  return (key: K) => {
+    if (!refs[key]) {
+      refs[key] = createRef<T>();
+    }
+
+    return refs[key];
+  };
+};
+
+export const padPickerMonths = (
+  months: TPickerMonth[],
+  padding: TPickerMonthPadding,
+  firstDayOfWeek: TDaysOfWeek,
+) => {
+  const pickerMonths = [...months];
+  const totalPadding = (padding.left ?? 0) + (padding.right ?? 0);
+
+  for (let i = 0; i < totalPadding; i += 1) {
+    if (i < (padding.left ?? 0)) {
+      // push new entries for (ltr)
+      pickerMonths.unshift(
+        getPickerMonth(subMonths(pickerMonths[0].month.date, 1), firstDayOfWeek, {
+          isPadding: true,
+        }),
+      );
+    } else {
+      // well, this does the opposite (rtl)
+      pickerMonths.push(
+        getPickerMonth(
+          addMonths(pickerMonths[pickerMonths.length - 1].month.date, 1),
+          firstDayOfWeek,
+          { isPadding: true },
+        ),
+      );
+    }
+  }
+
+  return pickerMonths;
 };

@@ -16,13 +16,21 @@ import {
 } from 'date-fns';
 import { times } from 'lodash';
 import { useEffect, useMemo, useState } from 'react';
-import { TDaysOfWeek, THoveredDate, TMonth, TPotentialRange } from './typings';
+import {
+  TDaysOfWeek,
+  THoveredDate,
+  TMonth,
+  TPotentialRange,
+  TPickerMonthPadding,
+} from './typings';
 import {
   getDays,
   getNextActiveMonth,
   getPickerMonths,
   getWeekdayLabels,
   validateDates,
+  refManager,
+  TPickerMonth,
 } from './useDatePicker.utils';
 
 export enum ActiveSelection {
@@ -62,6 +70,7 @@ export interface UseDatePickerProps {
   unavailableDates?: Date[] | ((date: Date) => boolean);
   getWeekDayLabel?: (dayIndex: TDaysOfWeek) => string;
   inputFormat?: string;
+  padding?: TPickerMonthPadding;
 }
 
 export function useDatePicker({
@@ -79,42 +88,37 @@ export function useDatePicker({
   unavailableDates = [],
   getWeekDayLabel,
   inputFormat = 'dd/MM/yyyy',
+  padding,
 }: UseDatePickerProps) {
-  const [activeMonths, setActiveMonths] = useState(() => {
-    if (startDate) {
-      return getPickerMonths({ numberOfMonths, firstDayOfWeek, startDate, endDate });
-    }
-
-    return getPickerMonths({ numberOfMonths, firstDayOfWeek, startDate: initialVisibleMonth });
-  });
+  const [activeMonths, setActiveMonths] = useState<TPickerMonth[]>([]);
   const [hoveredDate, setHoveredDate] = useState<THoveredDate>();
   const [focusedDate, setFocusedDate] = useState<Date | null>(startDate);
   const [activeSelection, setActiveSelection] = useState<ActiveSelection>(ActiveSelection.start);
   const [dateRange, setDateRage] = useState<TDateRange>({});
-  const [currentInputValues, setCurrentInputValues] = useState<TCurrentInputValues>(
-    getInputValuesFromRange(dateRange),
-  );
+  const [currentInputValues, setCurrentInputValues] = useState<TCurrentInputValues>({
+    start: '',
+    end: '',
+  });
   const [potentialRange, setPotentialRange] = useState<TPotentialRange>();
   const weekdayLabels = useMemo(() => getWeekdayLabels({ firstDayOfWeek, getWeekDayLabel }), [
     firstDayOfWeek,
     getWeekDayLabel,
   ]);
+  const getInputRef = useMemo(() => refManager<HTMLInputElement, ActiveSelection>(), []);
 
-  useEffect(
-    () => {
-      setActiveMonths(
-        getPickerMonths({
-          numberOfMonths,
-          firstDayOfWeek,
-          startDate: dateRange.start || initialVisibleMonth,
-          endDate: dateRange.end,
-        }),
-      );
-    },
-    [
-      /* dateRange.start, dateRange.end */
-    ],
-  );
+  useEffect(() => {
+    setActiveMonths(
+      getPickerMonths({
+        numberOfMonths,
+        firstDayOfWeek,
+        startDate: dateRange.start || initialVisibleMonth,
+        endDate: dateRange.end,
+        padding,
+      }),
+    );
+
+    setCurrentInputValues(getInputValuesFromRange(dateRange));
+  }, []);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -129,6 +133,14 @@ export function useDatePicker({
       }
     };
   });
+
+  useEffect(() => {
+    getInputRef(activeSelection).current?.focus();
+  }, [activeSelection, getInputRef]);
+
+  useEffect(() => {
+    calculatePotentialRange(hoveredDate?.date);
+  }, [hoveredDate]);
 
   function getInputValuesFromRange(range: TDateRange): TCurrentInputValues {
     return {
@@ -148,14 +160,6 @@ export function useDatePicker({
   const isWithinPotentialRange = (date: Date) => {
     return potentialRange && isWithinInterval(date, potentialRange.range);
   };
-
-  // const onDateFocus = (date: Date) => {
-  //   setFocusedDate(date);
-
-  //   if (!focusedDate || (focusedDate && !isSameMonth(date, focusedDate))) {
-  //     setActiveMonths(getMonths(numberOfMonths, date));
-  //   }
-  // };
 
   const isStartDate = (date: Date) => {
     return !!dateRange.start && isSameDay(date, dateRange.start);
@@ -211,14 +215,18 @@ export function useDatePicker({
       const isEndDateVisible =
         !!range.end && activeMonths.some((month) => isSameMonth(month.month.date, range.end!));
 
-      // only recompute active months when start date isn't in view
-      if (!isStartDateVisible || !isEndDateVisible) {
+      // only recompute active months when selected date isn't in view
+      if (
+        (!isStartDateVisible && activeSelection === ActiveSelection.start) ||
+        (!isEndDateVisible && activeSelection === ActiveSelection.end)
+      ) {
         setActiveMonths(
           getPickerMonths({
             numberOfMonths,
             firstDayOfWeek,
             startDate: range.start || initialVisibleMonth,
             endDate: range.end,
+            padding,
           }),
         );
       }
@@ -233,7 +241,12 @@ export function useDatePicker({
     }
   };
 
-  const calculatePotentialRange = (date: Date) => {
+  const calculatePotentialRange = (date?: Date) => {
+    if (!date) {
+      setPotentialRange(undefined);
+      return;
+    }
+
     const { start: startDate, end: endDate } = dateRange;
 
     if ((!startDate && !endDate) || activeSelection === ActiveSelection.none) {
@@ -315,12 +328,10 @@ export function useDatePicker({
       date,
       error: validationError ? { reason: validationError } : null,
     });
-
-    calculatePotentialRange(date);
   };
 
   const movePickerBy = (vector: number) => {
-    setActiveMonths(getNextActiveMonth(activeMonths, vector, firstDayOfWeek));
+    setActiveMonths(getNextActiveMonth(activeMonths, vector, firstDayOfWeek, padding));
   };
 
   const goToDate = (date: Date) => {
@@ -330,24 +341,25 @@ export function useDatePicker({
 
   const goToYear = (year: number) => {};
 
-  const onDateClick = (date: Date) => {
-    if (activeSelection === ActiveSelection.start) {
-      onDateSelect({ ...dateRange, start: date }, true);
-    } else if (activeSelection === ActiveSelection.end) {
-      onDateSelect({ ...dateRange, end: date }, true);
-    } else {
-      setActiveSelection(ActiveSelection.start);
-      onDateSelect({ start: date }, true);
-    }
-  };
-
   const getDateProps = (date: Date) => {
     const disabled = isDisabled(date);
+
+    const onDateClick = (date: Date) => {
+      if (activeSelection === ActiveSelection.start) {
+        onDateSelect({ ...dateRange, start: date }, true);
+      } else if (activeSelection === ActiveSelection.end) {
+        onDateSelect({ ...dateRange, end: date }, true);
+      } else {
+        setActiveSelection(ActiveSelection.start);
+        onDateSelect({ start: date }, true);
+      }
+    };
 
     return {
       props: {
         onClick: () => onDateClick(date),
         onMouseEnter: () => onDateHover(date),
+        onMouseLeave: () => setHoveredDate(undefined),
         disabled,
         tabIndex: -1,
       },
@@ -386,8 +398,6 @@ export function useDatePicker({
 
       const date = parse(e.target.value, inputFormat, new Date());
 
-      console.log(date);
-
       if (!isValid(date)) return;
 
       if (type === ActiveSelection.start) {
@@ -406,6 +416,7 @@ export function useDatePicker({
       onChange,
       onBlur,
       value,
+      ref: getInputRef(type),
     };
   };
 

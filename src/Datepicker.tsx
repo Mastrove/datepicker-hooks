@@ -35,6 +35,7 @@ function DatePicker() {
     onDatesChange: () => {},
     numberOfMonths: 3,
     firstDayOfWeek: 0,
+    padding: { left: 3 },
   });
 
   return (
@@ -87,6 +88,7 @@ function DatePicker() {
                 {'  '}
                 {month.month.year}
               </strong>
+              {month.isPadding && <span>pad</span>}
               {/* <select name="monthPicker" id="">
               {months.map()}
             </select> */}
